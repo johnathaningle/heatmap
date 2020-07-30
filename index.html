@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HeatMap</title>
+    <script src="https://unpkg.com/papaparse@5.2.0/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+    <style>
+    body {
+        margin: 0;
+        padding: 0;
+    }
+    #root {
+        min-height: 750px;
+        min-width: 1100px;
+    }
+    #controls {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-evenly;
+        padding: 15px;
+        width: 100%;
+    }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <div id="controls">
+        <button id="load">Load Data</button>
+        <button id="download">Export Json</button>
+        <button id="geocode">Geocode Addresses</button>
+        <button id="showheat">Show Heatmap</button>
+    </div>
+    <script>
+
+        var heatmapData = [];
+        var csv;
+
+        var worker = new Worker("geoworker.js");
+
+        worker.onmessage = function(e) {
+            console.log(e.data);
+            heatmapData.push(e.data);
+        }
+
+        var map = L.map('root').setView([38.952724, -76.70125], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '',
+            maxZoom: 8,
+            tileSize: 512,
+            zoomOffset: -1,
+        }).addTo(map);
+
+
+        var download = function(content) {
+            var a = document.createElement('a');
+            var blob = new Blob([JSON.stringify(content)], {'type':'text/plain'});
+            a.href = window.URL.createObjectURL(blob);
+            a.download = "us.json";
+            a.click();
+        }
+
+        $("#download").on("click", function() {
+            download(csv);
+        });
+
+        $("#load").on("click", function() {
+
+        });
+
+        Papa.parse("/us.csv", {
+            header: true,
+            dynamicTyping: true,
+            download: true,
+            complete: function(res) {
+                csv = res;
+                console.log(csv);
+                Papa.parse("/us_cities.csv", {
+                    header: true,
+                    dynamicTyping: true,
+                    download: true,
+                    complete: function(res) {
+                        console.log(csv);
+                        worker.postMessage(JSON.stringify({
+                            csv: csv.data,
+                            res: res.data
+                        }));
+                    }
+                });
+            }
+        });
+
+        $("#geocode").on("click", function() {
+        });
+
+
+
+        $("#showheat").on("click", function() {
+            var heat = heatmapData.map(x => [x.lat, x.lng, x.deaths / 100.00]);
+            L.heatLayer(heat
+            , {radius: 25}).addTo(map);
+        });
+
+
+
+
+    </script>
+</body>
+</html>
