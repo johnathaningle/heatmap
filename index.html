@@ -32,29 +32,67 @@
     <div id="controls">
         <button id="load">Load Data</button>
         <button id="download">Export Json</button>
-        <button id="geocode">Geocode Addresses</button>
-        <button id="showheat">Show Heatmap</button>
+        <input type="range" min="1" max="100" value="50" class="slider" id="radius">
+        <input type="number" name="" id="noise" value="5">
+        <select name="" id="dates">
+            <option value="04-27-2020">Select A Date</option>
+        </select>
+        <input type="range" min="1" max="500" value="50" class="slider" id="intense">
     </div>
     <script>
 
         var heatmapData = [];
+        var dates = [];
         var csv;
+        var map = L.map('root').setView([38.952724, -76.70125], 13);
+
+        var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '',
+            maxZoom: 8,
+            tileSize: 512,
+            zoomOffset: -1,
+        });
+
+        var heatLayer = L.heatLayer([], {radius: parseInt($("#radius").val())}).addTo(map);
+
+        tileLayer.addTo(map);
+        heatLayer.addTo(map);
+
+        var selectList = $("#dates");
 
         var worker = new Worker("geoworker.js");
+        var arrayWorker = new Worker("arrayworker.js");
+
+        arrayWorker.onmessage = function(data) {
+            dates.push(data.data);
+            var option = "<option val='" + data.data + "'>" + data.data + "</option>";
+            selectList.append(option);
+            lastWorkerMessage = new Date().getDate();
+        }
+        setTimeout(function() {
+            clearLayers();
+            arrayWorker.postMessage(JSON.stringify(heatmapData));
+        }, 5000);
+
+
+        $("#load").on("click", function() {
+            arrayWorker.postMessage(JSON.stringify(heatmapData));
+            selectList.html("");
+            dates.forEach(x => {
+                var option = "<option val='" +x + "'>" + x + "</option>";
+                selectList.append(option);
+            });
+        });
+
 
         worker.onmessage = function(e) {
             console.log(e.data);
             heatmapData.push(e.data);
         }
 
-        var map = L.map('root').setView([38.952724, -76.70125], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '',
-            maxZoom: 8,
-            tileSize: 512,
-            zoomOffset: -1,
-        }).addTo(map);
-
+        var clearLayers = function() {
+            map.removeLayer(heatLayer);
+        }
 
         var download = function(content) {
             var a = document.createElement('a');
@@ -65,12 +103,9 @@
         }
 
         $("#download").on("click", function() {
-            download(csv);
+            download(heatmapData);
         });
 
-        $("#load").on("click", function() {
-
-        });
 
         Papa.parse("/us.csv", {
             header: true,
@@ -94,15 +129,48 @@
             }
         });
 
-        $("#geocode").on("click", function() {
+        var log20 = function(x) {
+            if (x == 0) {
+                return x;
+            }
+            if (Math.log1p(x) < 0) {
+                return 0.001;
+            }
+            else {
+                return Math.log1p(x);
+            }
+        } 
+
+        var showHeat = function(date) {
+            clearLayers();
+            var data = heatmapData;
+            if(date != "" && date != undefined) {
+                data = data.filter(x => x.date == date);
+            }
+            //var noise = (num) => num + (Math.random() / parseInt($("#noise").val()));
+
+            var heat = data.map(x => [x.lat, x.lng, log20(x.deaths)]);
+            console.log(heat);
+            heatLayer = L.heatLayer(heat
+            , {radius: parseInt($("#radius").val())}).addTo(map);
+        }
+
+        $("#noise").on("change", function() {
+            showHeat($("#dates").val());
         });
 
+        $("#radius").on("change", function() {
+            showHeat($("#dates").val());
+            console.log("radus", $("#radius").val());
+        });
 
+        $("#dates").on("change", function() {
+            showHeat($("#dates").val());
+        });
 
-        $("#showheat").on("click", function() {
-            var heat = heatmapData.map(x => [x.lat, x.lng, x.deaths / 100.00]);
-            L.heatLayer(heat
-            , {radius: 25}).addTo(map);
+        $("#intense").on("change", function() {
+            showHeat($("#dates").val());
+            console.log($("#intense").val());
         });
 
 

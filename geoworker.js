@@ -1,9 +1,12 @@
 self.onmessage = function(data) {
+
+
+
     var data = JSON.parse(data.data);
     var csv = data.csv;
     var res = data.res;
     csv = csv.filter(x => x.county != "Unknown" && x.state != "Virgin Islands" && x.state != "Guam" && x.county != "Saipan");
-    csv = csv.filter(x => x.state == "Maryland");
+    //csv = csv.filter(x => x.state == "Maryland");
     csv = csv.forEach((x, idx) => {
         var loc = res.filter(y => y.COUNTY == x.county && y.STATE_NAME == x.state);
         if (loc.length == 0) {
@@ -20,5 +23,6 @@ self.onmessage = function(data) {
         }
         postMessage(x);
     });
+
 
 }
