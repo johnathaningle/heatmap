@@ -9,6 +9,8 @@
     <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
     body {
         margin: 0;
@@ -33,152 +35,133 @@
     </style>
 </head>
 <body>
-    <div id="root"></div>
-    <div id="controls">
-        <div>
-            <button id="play">Play Animation</button>
-        </div>
-        <div>
-            <button id="load">Load Data</button>
-        </div>
-        <div>
-            <button id="download">Export Json</button>
-        </div>
-        <div>
-            <label for="">Radius</label>
-            <input type="range" min="1" max="100" value="50" class="slider" id="radius">
-        </div>
-        <!-- <input type="number" name="" id="noise" value="5"> -->
-        <div>
-            <select name="" id="dates">
-                <option value="04-27-2020">Select A Date</option>
-            </select>
-        </div>
-        <div>
-            <label>Intensity</label>
-            <input type="range" min="1" max="20" value="13" class="slider" id="intense">
+    <div id="app">
+        <div id="root"></div>
+        <div id="controls">
+            <div>
+                {{ message }}
+            </div>
+            <div>
+                <button v-on:click="playAnimation">Play Animation</button>
+            </div>
+            <div>
+                <button id="download">Export Json</button>
+            </div>
+            <div>
+                <label for="">Radius</label>
+                <input type="range" min="1" max="100" value="50" class="slider" id="radius">
+            </div>
+            <!-- <input type="number" name="" id="noise" value="5"> -->
+            <div>
+                <select v-model="selectedDate">
+                    <option v-for="date in dates" v-bind:value="date">
+                        {{ date}}
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label>Intensity</label>
+                <input type="range" min="1" max="20" value="13" class="slider" id="intense">
+            </div>
         </div>
     </div>
     <script>
 
-        var heatmapData = [];
-        var dates = [];
-
-        var arrayWorker = new Worker("arrayworker.js");
-        arrayWorker.onmessage = function(data) {
-            dates.push(data.data);
-        }
-
-        $.getJSON({
-            url: "/us.json",
-            success: function(res) {
-                console.log("Success", res);
-                heatmapData = res.filter(x => x.lat != undefined && x.lng != undefined);
-                var dates = heatmapData.map(x => x.date);
-                console.log(dates);
-                arrayWorker.postMessage(JSON.stringify(dates));
+        var vue = new Vue({
+            el: "#app",
+            data: {
+                map: {},
+                tileLayer: {},
+                heatLayer: {},
+                arrayWorker: {},
+                selectedDate: "",
+                dates: [],
+                heatmapData: [],
+                message: ''
             },
-            error: function(err) {
-                console.log(err);
+            watch: {
+                selectedDate: function() {
+                    this.showHeat();
+                },
+                heatmapData: function() {
+                    console.log(this.heatmapData);
+                    this.arrayWorker.postMessage(JSON.stringify(this.heatmapData));
+                }
+
+            },
+            mounted: function() {
+                this.dates.push("Please select a date");
+                this.map = L.map('root').setView([38.952724, -76.70125], 13);
+                this.tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '',
+                    maxZoom: 8,
+                    tileSize: 512,
+                    zoomOffset: -1,
+                });
+
+                this.heatLayer = L.heatLayer([], {
+                    radius: parseInt($("#radius").val())
+                });
+
+                this.tileLayer.addTo(this.map);
+                this.heatLayer.addTo(this.map);
+
+                this.arrayWorker = new Worker("arrayworker.js");
+
+                var datesRef = this.dates;
+                this.arrayWorker.onmessage = function(res) {
+                    console.log(res.data.date);
+                    datesRef.push(res.data.date);
+                }
+
+                this.getData();
+            },
+            methods: {
+                log20: function(x) {
+                    if (x == 0) {
+                        return x;
+                    }
+                    if (Math.log1p(x) < 0) {
+                        return 0.001;
+                    }
+                    else {
+                        var intense = parseInt($("#intense").val()) / 10.0;
+                        return Math.log1p(x) / Math.pow(intense, x);
+                    }
+                },
+                getData: function() {
+                    axios.get("/us.json")
+                    .then(response => this.heatmapData = response.data);
+                },
+                download: function() {
+                    var a = document.createElement('a');
+                    var blob = new Blob([JSON.stringify(content)], {'type':'text/plain'});
+                    a.href = window.URL.createObjectURL(blob);
+                    a.download = "us.json";
+                    a.click();
+                },
+                showHeat: function(date) {
+                    this.map.removeLayer(this.heatLayer);
+                    var data = [];
+                    console.log(this.heatmapData);
+                    if(this.selectedDate != "" && this.selectedDate != undefined) {
+                        data = this.heatmapData.filter(x => x.date == this.selectedDate);
+                    }
+                    //var noise = (num) => num + (Math.random() / parseInt($("#noise").val()));
+        
+                    var heat = data.map(x => [x.lat, x.lng, this.log20(x.deaths)]);
+                    console.log(heat);
+                    this.heatLayer = L.heatLayer(heat
+                    , {radius: parseInt($("#radius").val())});
+                    this.heatLayer.addTo(this.map);
+                },
+                playAnimation: function() {
+                    this.dates.forEach(x => setTimeout(function() {
+                        showHeat(x);
+                        $("#dates").val(x);
+                    }, 2000));
+                }
             }
-        })
-
-        var map = L.map('root').setView([38.952724, -76.70125], 13);
-
-        var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '',
-            maxZoom: 8,
-            tileSize: 512,
-            zoomOffset: -1,
-        });
-
-        var heatLayer = L.heatLayer([], {
-            radius: parseInt($("#radius").val())
-        });
-
-        tileLayer.addTo(map);
-        heatLayer.addTo(map);
-
-
-        var loadData = function() {
-            var selectList = $("#dates");
-            selectList.html("");
-            dates.forEach(x => {
-                var option = "<option val='" +x + "'>" + x + "</option>";
-                selectList.append(option);
-            });
-        }
-
-        setTimeout(function() {
-            loadData();
-        }, 1500);
-
-        $("#load").on("click", function() {
-            loadData();
-        });
-
-        var download = function(content) {
-            var a = document.createElement('a');
-            var blob = new Blob([JSON.stringify(content)], {'type':'text/plain'});
-            a.href = window.URL.createObjectURL(blob);
-            a.download = "us.json";
-            a.click();
-        }
-
-        $("#download").on("click", function() {
-            download(heatmapData);
-        });
-
-        var log20 = function(x) {
-            if (x == 0) {
-                return x;
-            }
-            if (Math.log1p(x) < 0) {
-                return 0.001;
-            }
-            else {
-                var intense = parseInt($("#intense").val()) / 10.0;
-                return Math.log1p(x) / Math.pow(intense, x);
-            }
-        } 
-
-        var showHeat = function(date) {
-            map.removeLayer(heatLayer);
-            var data = [];
-            if(date != "" && date != undefined) {
-                data = heatmapData.filter(x => x.date == date);
-            }
-            //var noise = (num) => num + (Math.random() / parseInt($("#noise").val()));
-
-            var heat = data.map(x => [x.lat, x.lng, log20(x.deaths)]);
-            heatLayer = L.heatLayer(heat
-            , {radius: parseInt($("#radius").val())});
-            heatLayer.addTo(map);
-        }
-
-        $("#noise").on("change", function() {
-            showHeat($("#dates").val());
-        });
-
-        $("#radius").on("change", function() {
-            showHeat($("#dates").val());
-            console.log("radus", $("#radius").val());
-        });
-
-        $("#dates").on("change", function() {
-            showHeat($("#dates").val());
-        });
-
-        $("#intense").on("change", function() {
-            showHeat($("#dates").val());
-            console.log($("#intense").val());
-        });
-
-        $("#play").on("click", function() {
-            dates.forEach(x => setTimeout(function() {
-                showHeat(x);
-                $("#dates").val(x);
-            }, 2000));
         });
 
 
