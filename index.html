@@ -25,25 +25,64 @@
         padding: 15px;
         width: 100%;
     }
+    #controls div {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
     </style>
 </head>
 <body>
     <div id="root"></div>
     <div id="controls">
-        <button id="load">Load Data</button>
-        <button id="download">Export Json</button>
-        <input type="range" min="1" max="100" value="50" class="slider" id="radius">
-        <input type="number" name="" id="noise" value="5">
-        <select name="" id="dates">
-            <option value="04-27-2020">Select A Date</option>
-        </select>
-        <input type="range" min="1" max="500" value="50" class="slider" id="intense">
+        <div>
+            <button id="play">Play Animation</button>
+        </div>
+        <div>
+            <button id="load">Load Data</button>
+        </div>
+        <div>
+            <button id="download">Export Json</button>
+        </div>
+        <div>
+            <label for="">Radius</label>
+            <input type="range" min="1" max="100" value="50" class="slider" id="radius">
+        </div>
+        <!-- <input type="number" name="" id="noise" value="5"> -->
+        <div>
+            <select name="" id="dates">
+                <option value="04-27-2020">Select A Date</option>
+            </select>
+        </div>
+        <div>
+            <label>Intensity</label>
+            <input type="range" min="1" max="20" value="13" class="slider" id="intense">
+        </div>
     </div>
     <script>
 
         var heatmapData = [];
         var dates = [];
-        var csv;
+
+        var arrayWorker = new Worker("arrayworker.js");
+        arrayWorker.onmessage = function(data) {
+            dates.push(data.data);
+        }
+
+        $.getJSON({
+            url: "/us.json",
+            success: function(res) {
+                console.log("Success", res);
+                heatmapData = res.filter(x => x.lat != undefined && x.lng != undefined);
+                var dates = heatmapData.map(x => x.date);
+                console.log(dates);
+                arrayWorker.postMessage(JSON.stringify(dates));
+            },
+            error: function(err) {
+                console.log(err);
+            }
+        })
+
         var map = L.map('root').setView([38.952724, -76.70125], 13);
 
         var tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -53,46 +92,30 @@
             zoomOffset: -1,
         });
 
-        var heatLayer = L.heatLayer([], {radius: parseInt($("#radius").val())}).addTo(map);
+        var heatLayer = L.heatLayer([], {
+            radius: parseInt($("#radius").val())
+        });
 
         tileLayer.addTo(map);
         heatLayer.addTo(map);
 
-        var selectList = $("#dates");
 
-        var worker = new Worker("geoworker.js");
-        var arrayWorker = new Worker("arrayworker.js");
-
-        arrayWorker.onmessage = function(data) {
-            dates.push(data.data);
-            var option = "<option val='" + data.data + "'>" + data.data + "</option>";
-            selectList.append(option);
-            lastWorkerMessage = new Date().getDate();
-        }
-        setTimeout(function() {
-            clearLayers();
-            arrayWorker.postMessage(JSON.stringify(heatmapData));
-        }, 5000);
-
-
-        $("#load").on("click", function() {
-            arrayWorker.postMessage(JSON.stringify(heatmapData));
+        var loadData = function() {
+            var selectList = $("#dates");
             selectList.html("");
             dates.forEach(x => {
                 var option = "<option val='" +x + "'>" + x + "</option>";
                 selectList.append(option);
             });
+        }
+
+        setTimeout(function() {
+            loadData();
+        }, 1500);
+
+        $("#load").on("click", function() {
+            loadData();
         });
-
-
-        worker.onmessage = function(e) {
-            console.log(e.data);
-            heatmapData.push(e.data);
-        }
-
-        var clearLayers = function() {
-            map.removeLayer(heatLayer);
-        }
 
         var download = function(content) {
             var a = document.createElement('a');
@@ -106,29 +129,6 @@
             download(heatmapData);
         });
 
-
-        Papa.parse("/us.csv", {
-            header: true,
-            dynamicTyping: true,
-            download: true,
-            complete: function(res) {
-                csv = res;
-                console.log(csv);
-                Papa.parse("/us_cities.csv", {
-                    header: true,
-                    dynamicTyping: true,
-                    download: true,
-                    complete: function(res) {
-                        console.log(csv);
-                        worker.postMessage(JSON.stringify({
-                            csv: csv.data,
-                            res: res.data
-                        }));
-                    }
-                });
-            }
-        });
-
         var log20 = function(x) {
             if (x == 0) {
                 return x;
@@ -137,22 +137,23 @@
                 return 0.001;
             }
             else {
-                return Math.log1p(x);
+                var intense = parseInt($("#intense").val()) / 10.0;
+                return Math.log1p(x) / Math.pow(intense, x);
             }
         } 
 
         var showHeat = function(date) {
-            clearLayers();
-            var data = heatmapData;
+            map.removeLayer(heatLayer);
+            var data = [];
             if(date != "" && date != undefined) {
-                data = data.filter(x => x.date == date);
+                data = heatmapData.filter(x => x.date == date);
             }
             //var noise = (num) => num + (Math.random() / parseInt($("#noise").val()));
 
             var heat = data.map(x => [x.lat, x.lng, log20(x.deaths)]);
-            console.log(heat);
             heatLayer = L.heatLayer(heat
-            , {radius: parseInt($("#radius").val())}).addTo(map);
+            , {radius: parseInt($("#radius").val())});
+            heatLayer.addTo(map);
         }
 
         $("#noise").on("change", function() {
@@ -171,6 +172,13 @@
         $("#intense").on("change", function() {
             showHeat($("#dates").val());
             console.log($("#intense").val());
+        });
+
+        $("#play").on("click", function() {
+            dates.forEach(x => setTimeout(function() {
+                showHeat(x);
+                $("#dates").val(x);
+            }, 2000));
         });
 
 

@@ -1,14 +1,14 @@
 
 
+
 self.onmessage = function (data) {
-    var distinct = function(value, index, self) {
-        return self.indexOf(value) === index;
-    }
+    var dates = [];
     var heatmapData = JSON.parse(data.data);
-    var data = heatmapData.map(x => x.date);
-    data = data.filter(distinct);
-    console.log(data);
-    data.forEach(element => {
-        postMessage(element);
+    heatmapData.forEach(element => {
+        if(dates.indexOf(element) < 0) {
+            dates.push(element);
+            postMessage(element);
+        }
+
     });
 }
