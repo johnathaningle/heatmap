@@ -4,13 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HeatMap</title>
-    <script src="https://unpkg.com/papaparse@5.2.0/papaparse.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script> -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
     body {
         margin: 0;
@@ -73,7 +72,6 @@
                 map: {},
                 tileLayer: {},
                 heatLayer: {},
-                arrayWorker: {},
                 selectedDate: "",
                 dates: [],
                 heatmapData: [],
@@ -85,7 +83,6 @@
                 },
                 heatmapData: function() {
                     console.log(this.heatmapData);
-                    this.arrayWorker.postMessage(JSON.stringify(this.heatmapData));
                 }
 
             },
@@ -106,14 +103,6 @@
                 this.tileLayer.addTo(this.map);
                 this.heatLayer.addTo(this.map);
 
-                this.arrayWorker = new Worker("arrayworker.js");
-
-                var datesRef = this.dates;
-                this.arrayWorker.onmessage = function(res) {
-                    console.log(res.data.date);
-                    datesRef.push(res.data.date);
-                }
-
                 this.getData();
             },
             methods: {
@@ -130,8 +119,14 @@
                     }
                 },
                 getData: function() {
-                    axios.get("/us.json")
-                    .then(response => this.heatmapData = response.data);
+                    $.getJSON("/us_features.json")
+                        .then(response => {
+                            console.log(response);
+                            this.heatmapData = response
+                        });
+
+                    $.getJSON("/dates.json")
+                        .then(response => this.dates = response);
                 },
                 download: function() {
                     var a = document.createElement('a');
