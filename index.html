@@ -47,11 +47,12 @@
                 <button id="download">Export Json</button>
             </div>
             <div>
-                <label for="">Radius</label>
-                <input type="range" min="1" max="100" value="50" class="slider" id="radius">
+                <label for="">Radius {{ radius }}</label>
+                <input type="range" min="1" max="100" value="50" class="slider" id="radius" v-model="radius">
             </div>
             <!-- <input type="number" name="" id="noise" value="5"> -->
             <div>
+                <label>Date</label>
                 <select v-model="selectedDate">
                     <option v-for="date in dates" v-bind:value="date">
                         {{ date}}
@@ -59,8 +60,20 @@
                 </select>
             </div>
             <div>
-                <label>Intensity</label>
-                <input type="range" min="1" max="20" value="13" class="slider" id="intense">
+                <label>Field</label>
+                <select v-model="selectedVis">
+                    <option v-for="option in visOptions" v-bind:value="option">
+                        {{ option }}
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label>Intensity {{ intensity }}</label>
+                <input type="range" min="1" max="30" value="13" class="slider" id="intense" v-model="intensity">
+            </div>
+            <div>
+                <label>Debug</label>
+                <input type="checkbox" v-model="debug" id="">
             </div>
         </div>
     </div>
@@ -69,13 +82,23 @@
         var vue = new Vue({
             el: "#app",
             data: {
+                selectedVis: "",
+                visOptions: [
+                    "Deaths",
+                    "Cases",
+                    "Monthly Change in Deaths",
+                    "Monthly Change in Cases",
+                ],
+                debug: false,
                 map: {},
                 tileLayer: {},
                 heatLayer: {},
                 selectedDate: "",
                 dates: [],
                 heatmapData: [],
-                message: ''
+                message: '',
+                intensity: 13,
+                radius: 50,
             },
             watch: {
                 selectedDate: function() {
@@ -83,6 +106,15 @@
                 },
                 heatmapData: function() {
                     console.log(this.heatmapData);
+                },
+                radius: function() {
+                    this.showHeat();
+                },
+                intensity: function() {
+                    this.showHeat();
+                },
+                selectedVis: function() {
+                    this.showHeat();
                 }
 
             },
@@ -97,7 +129,7 @@
                 });
 
                 this.heatLayer = L.heatLayer([], {
-                    radius: parseInt($("#radius").val())
+                    radius: parseInt(this.radius)
                 });
 
                 this.tileLayer.addTo(this.map);
@@ -114,7 +146,7 @@
                         return 0.001;
                     }
                     else {
-                        var intense = parseInt($("#intense").val()) / 10.0;
+                        var intense = parseInt(this.intensity) / 10.0;
                         return Math.log1p(x) / Math.pow(intense, x);
                     }
                 },
@@ -142,19 +174,37 @@
                     if(this.selectedDate != "" && this.selectedDate != undefined) {
                         data = this.heatmapData.filter(x => x.date == this.selectedDate);
                     }
-                    //var noise = (num) => num + (Math.random() / parseInt($("#noise").val()));
-        
-                    var heat = data.map(x => [x.lat, x.lng, this.log20(x.deaths)]);
+
+                    if(this.debug) {
+                        data = data.filter(x => x.county == "Carroll" && x.state == "Maryland");
+                    }
+                    var heat = [];
+                    switch(this.selectedVis) {
+                        case "Deaths":
+                            heat = data.map(x => [x.lat, x.lng, this.log20(x.deaths)]);
+                            break;
+                        case "Cases":
+                            heat = data.map(x => [x.lat, x.lng, this.log20(x.cases)]);
+                            break;
+                        case "Monthly Change in Deaths":
+                            heat = data.map(x => [x.lat, x.lng, this.log20(x.monthly_change_in_deaths)]);
+                            break;
+                        case "Monthly Change in Cases":
+                            heat = data.map(x => [x.lat, x.lng, this.log20(x.monthly_change_in_cases)]);
+                            break;
+                        default:
+                            heat = data.map(x => [x.lat, x.lng, this.log20(x.deaths)]);
+                            break;
+                    }
+
+
                     console.log(heat);
                     this.heatLayer = L.heatLayer(heat
-                    , {radius: parseInt($("#radius").val())});
+                    , {radius: parseInt(this.radius)});
                     this.heatLayer.addTo(this.map);
                 },
                 playAnimation: function() {
-                    this.dates.forEach(x => setTimeout(function() {
-                        showHeat(x);
-                        $("#dates").val(x);
-                    }, 2000));
+                    this.dates.forEach(x => setTimeout(this.showHeat(x), 2000));
                 }
             }
         });
